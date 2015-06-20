@@ -1,0 +1,125 @@
+---
+title: "Practical Machine Learning-Course Project"
+author: "Oscar Portillo"
+date: "Wednesday, June 17, 2015"
+output: html_document
+---
+
+**INTRODUCTION**
+
+Muscle strengthening exercises is an effective way of improving cardio-respiratory fitness. A proper technique is a key requirement for effective training to have a positive impact on cardio-respiratory fitness. Incorrect technique has been identified as the main cause of training injuries [1]. Notably, free weights exercises account for most of the weight training-related injuries (90.4%)
+in the U.S.[2]. Velloso et. al. [3] explored three key aspects of qualitative activity recognition, namely how to deal with specifying activities, detecting mistakes and providing feedback. They recorded users performing the same activity correctly and with a set of common mistakes with wearable sensors and used machine learning to classify each mistake, see testing setup in figure below.
+
+![My Figure](TestSetup.png)
+
+Participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions:
+1. Exactly according to the specification (Class A),
+2. Throwing the elbows to the front (Class B),
+3. Lifting the dumbbell only halfway (Class C),
+4. Lowering the dumbbell only halfway (Class D),
+5. Throwing the hips to the front (Class E). 
+
+**OBJECTIVE**
+
+The objective of this work is to predict qualitative activity recognition using machine learning techniques. The algorithm is applied to recorded data of users performing an exercise in different ways, some of which corresponded to common mistakes made in the execution of this particular activity (test data taken from Ref[3]). 
+
+**DATA PROCESSING**
+
+The required libraries to perform this analysis area loaded. The training and testing data is downloaded directly from the web. As we can see, the training dataset contains 19622 observations of 160 variables. Classes B to E have approximately the same number of test records (these are the classes that corresponds to common mistakes), Class A (correct execution of the exercise) has the highest number of observations. The 6 participants roughly performed the same number of exercises.
+
+```{r, message=FALSE}
+#Loading libraries
+library(caret)
+library(randomForest)
+library(RColorBrewer)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+# Getting the training and testing datasets
+trainingUrlAddress <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrlAddress <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#Note: strings "NA", "DIV/0!" and "" are treated as NA-values
+trainingData <- read.csv(url(trainingUrlAddress), na.strings=c("NA","#DIV/0!", ""))
+testingData <- read.csv(url(testingUrlAddress), na.strings=c("NA","#DIV/0!", ""))
+# Printing the number of observations/variables and summary of classe and participants
+dim(trainingData);summary(trainingData$classe);table(trainingData$user_name)
+```
+
+Data inspection of both training and testing datasets revels that the first column as well as the third to seventh columns (observation ID, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp,	new_window and num_window) are irrelevant variables. They are removed, so that they are not included in the predictive model.
+
+```{r}
+trainingData <-trainingData[,-c(1, 3:7)]
+testingData <-testingData[,-c(1, 3:7)]
+```
+
+The number of "NA"s per column is calculated. It can be observed that there are only 54 columns with zero NAs and 6 columns with all NAs (19622 entries). 67 columns have 19216 NAs, this represents about 97.9% of the total measurements. Therefore, attributes with mostly NAs entries are also discarded.
+
+```{r}
+columns_NAs <- colSums(is.na(trainingData));
+table(columns_NAs)
+#Extract column' names for those attributes with more than 19216 NAs and remove them from the datasets
+get_column_names = names(columns_NAs[columns_NAs>=19216])
+trainingData = trainingData[, !names(trainingData) %in% get_column_names]
+```
+
+Thus my final training set consists of 54 attributes, they are listed below:
+
+```{r}
+names(trainingData)
+```
+
+**PREDICTIVE MODELLING**
+
+The data is partitioning by *classe* variable, 70% in the training set and 30% in the validation set. The validation data set will be used to conduct cross validation later in this report. A seed (54321) was set for reproducibility purposes.
+
+```{r}
+# Arbitrary seed for reproducibility
+set.seed(54321)
+inTrain = createDataPartition(y=trainingData$classe, p=0.7, list=FALSE)
+training = trainingData[inTrain,]
+testing = trainingData[-inTrain,]
+```
+
+A predictive model for activity recognition is built using the Random Forest algorithm. This algorithm was chosen because it gives estimates of what variables are important in the classification, runs efficiently on large databases, is robust to correlated covariates and outliers and is unexcelled in accuracy among current algorithms. Confusion matrix (or error matrix) were run to visualize the performance of the algorithm.
+
+```{r}
+randomForestSimulation <- randomForest(classe ~. , data=training, method="class")
+predictionRandomForestSimulation <- predict(randomForestSimulation, testing, type = "class")
+confusionMatrix(predictionRandomForestSimulation, testing$classe)
+```
+
+Another predictive model based on the recursive partitioning and regression tree is built on the data. The model is plotted below:
+
+```{r, message=FALSE, error=FALSE, warnings=FALSE}
+decisionTreeSimulation <- rpart(classe ~ ., data=training, method="class")
+##fancyRpartPlot(decisionTreeSimulation, cex=.8)
+rpart.plot(decisionTreeSimulation, main="Decision Tree", type=4, extra=102, under=TRUE, faclen=0, cex=.5)
+```
+
+The Decision Tree predictive model is run on the validation data set and error matrix is obtained to assess the performance of the model. 
+
+```{r}
+predictionTreeSimulation <- predict(decisionTreeSimulation, testing, type = "class")
+confusionMatrix(predictionTreeSimulation, testing$classe)
+```
+
+It can be observed that the accuracy of the Random Forest model (99.63%) is superior to the Decision Tree method (73.78%). Hence, the Random Forest model is selected to make predictions on the testing dataset. Classe prediction of the 20 cases is shown below.
+
+```{r}
+# Run the Random Forest prediction model on the testing data 
+finalPrediction <- predict(randomForestSimulation, testingData, type="class")
+finalPrediction
+```
+
+**CONCLUSIONS**
+
+Machine learning models were built  to assess the quality of execution of weight lifting exercises. Confusion matrices of the models were generated to calculate cross-tabulation of observed and predicted classes with associates statistics. The Random Forest algorithm performed better than the Decision Tree technique, the accuracy was estimated as 99.63% and out-of-sample error of 0.37%. Thus, the Random Forest model was used to predict 20 different test cases (file: pml-testing.csv).
+
+**References**
+
+[1] M. Gallagher.*Ten most common causes of training injury*. Muscle & Fitness, June 1996.
+
+[2] Z. Y. Kerr, C. L. Collins, and R. D. Comstock.*Epidemiology of weight training-related injuries presenting to united states emergency departments,
+1990 to 2007*. The American Journal of Sports Medicine, 38(4):765-771, 2010.
+
+[3]E. Velloso, A. Bulling, H. Gellersen, W. Ugulino and H. Fuks. *Qualitative Activity Recognition of Weight Lifting Exercises*.Augmented Human International Conference (AH).March. 2013.
